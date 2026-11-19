@@ -257,4 +257,114 @@ networks:
     driver: bridge
 
 5000 , 80
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+find / -name check_http 2>/dev/null
+apt update
+apt install vim -y
 
+docker pull jasonrivers/nagios:latest
+docker network create monitoring-network
+docker run -d --name nagios --network monitoring-network -p 8081:80 jasonrivers/nagios:latest
+docker run -d --name metro-app --network monitoring-network -p 8080:8080 metro-app:latest
+docker ps
+docker exec -it nagios bash
+ls /opt/nagios/libexec
+cat >> /opt/nagios/etc/objects/commands.cfg <<'EOF'
+define command {
+    command_name check_mem
+    command_line $USER1$/check_mem.pl -w 80 -c 90
+}
+EOF
+cat >> /opt/nagios/etc/objects/localhost.cfg <<'EOF'
+
+define host {
+    use                     linux-server
+    host_name               metro-app
+    alias                   Metro Reservation Application
+    address                 metro-app
+}
+
+define service {
+    use                     generic-service
+    host_name               metro-app
+    service_description     CPU Load
+    check_command           check_load!5.0,4.0,3.0!10.0,8.0,6.0
+}
+
+define service {
+    use                     generic-service
+    host_name               metro-app
+    service_description     Memory Usage
+    check_command           check_mem
+}
+
+define service {
+    use                     generic-service
+    host_name               metro-app
+    service_description     Disk Usage
+    check_command           check_disk!20%!10%
+}
+
+define service {
+    use                     generic-service
+    host_name               metro-app
+    service_description     Uptime
+    check_command           check_uptime
+}
+
+define service {
+    use                     generic-service
+    host_name               metro-app
+    service_description     Metro Reservation HTTP
+    check_command           check_http!-p 8080
+}
+EOF
+
+/usr/local/nagios/bin/nagios -v /opt/nagios/etc/nagios.cfg
+
+exit
+
+docker restart nagios
+
+docker ps
+-------------------------
+sudo apt update
+sudo apt upgrade -y
+
+sudo apt install git openjdk-8-jdk maven docker.io -y
+
+git --version
+java -version
+mvn -version
+docker --version
+
+sudo systemctl enable --now docker
+sudo systemctl status docker --no-pager
+
+cd ~
+
+git clone https://github.com/archanareddyse/OLTRS.git
+
+cd ~/OLTRS
+
+mvn clean package
+
+ls -lh target/ticket-reservation.war
+
+cat > Dockerfile <<'EOF'
+FROM tomcat:9.0-jdk8
+RUN rm -rf /usr/local/tomcat/webapps/*
+COPY target/ticket-reservation.war /usr/local/tomcat/webapps/ROOT.war
+EXPOSE 8080
+CMD ["catalina.sh", "run"]
+EOF
+
+sudo docker build -t oltrs-app .
+
+sudo docker run -d --name oltrs-container -p 8080:8080 oltrs-app
+
+sudo docker ps
+
+curl -I http://localhost:8080/
+
+sudo docker logs --tail 100 oltrs-container
